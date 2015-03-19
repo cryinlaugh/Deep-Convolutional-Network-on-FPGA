@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<maxCompilerManager version="2">
-<enginePart internalEngineSubproject="CNN_FW_Conv_V0_EngineCode" isSrcBin="false" isUseDefaultSelected="false" outputLocation="/CNN_FW_Conv_V0_EngineCode/bin" projectName="CNN_FW_Conv_V0"/>
-<cpuPart internalCpuSubproject="CNN_FW_Conv_V0_CPUCode"/>
-<watchedFiles/>
-</maxCompilerManager>
