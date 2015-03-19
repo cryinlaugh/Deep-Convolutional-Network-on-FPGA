@@ -1,0 +1,115 @@
+package cnn_fw_conv_v0;
+
+import com.maxeler.maxcompiler.v2.managers.BuildConfig;
+import com.maxeler.maxcompiler.v2.managers.custom.CustomManager;
+import com.maxeler.maxcompiler.v2.managers.custom.DFELink;
+import com.maxeler.maxcompiler.v2.managers.custom.blocks.KernelBlock;
+import com.maxeler.maxcompiler.v2.managers.custom.stdlib.MemoryControlGroup.MemoryAccessPattern;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.CPUTypes;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.EngineInterface;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.EngineInterface.Direction;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.InterfaceParam;
+
+public class CNN_FW_Conv_V0Manager extends CustomManager {
+
+	private static final String s_kernelName = "CNN_FW_Conv_V0Kernel";
+	//private static final CPUTypes type = CPUTypes.FLOAT;
+	private static final CPUTypes type = CPUTypes.DOUBLE;
+	private static final int iK = 5;
+	private static final int iParaBitWidth = 16;
+	private static final int iRowSize = 12;
+	private static final int iColSize = 12;
+	private static final int iBatchSize = 384;
+
+	public CNN_FW_Conv_V0Manager(CNN_FW_Conv_V0EngineParameters engineParameters) {
+		super(engineParameters);
+
+		KernelBlock block = addKernel(new CNN_FW_Conv_V0Kernel(makeKernelParameters(s_kernelName),
+			iK,iParaBitWidth,iRowSize,iColSize,iBatchSize));
+
+		DFELink cpu_to_lmem_at_lmem = addStreamToOnCardMemory("cpu_to_lmem_at_lmem", MemoryAccessPattern.LINEAR_1D);
+		DFELink cpu_to_lmem_at_cpu = addStreamFromCPU("cpu_to_lmem_at_cpu");
+		DFELink lmem_to_cpu_at_lmem = addStreamFromOnCardMemory("lmem_to_cpu_at_lmem", MemoryAccessPattern.LINEAR_1D);
+		DFELink lmem_to_cpu_at_cpu = addStreamToCPU("lmem_to_cpu_at_cpu");
+		DFELink data_link_old = addStreamFromOnCardMemory("old", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_x = addStreamFromOnCardMemory("x", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_w = addStreamFromCPU("w");
+		DFELink data_link_z2 = addStreamToOnCardMemory("z2", MemoryAccessPattern.LINEAR_1D);
+
+		cpu_to_lmem_at_lmem <== cpu_to_lmem_at_cpu;
+		lmem_to_cpu_at_cpu <== lmem_to_cpu_at_lmem;
+
+		block.getInput("x") <== data_link_x;
+		block.getInput("old") <== data_link_old;
+		block.getInput("w") <== data_link_w;
+		data_link_z2 <== block.getOutput("z2");
+
+		createSLiCinterface(modeRead("readLMem"));
+		createSLiCinterface(modeWrite("writeLMem"));
+		createSLiCinterface(modeDefault());
+
+		configBuild(engineParameters);
+	}
+
+	private static EngineInterface modeRead(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("lmem_to_cpu_at_cpu", type, size);
+		engine_interface.setLMemLinear("lmem_to_cpu_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeWrite(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("cpu_to_lmem_at_cpu", type, size);
+		engine_interface.setLMemLinear("cpu_to_lmem_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeDefault() {
+		EngineInterface engine_interface = new EngineInterface();
+
+		InterfaceParam ticks = engine_interface.addParam("ticks", CPUTypes.INT);
+		InterfaceParam no = engine_interface.addParam("no", CPUTypes.INT);
+		InterfaceParam para_size = no;
+		InterfaceParam x_offset = engine_interface.addParam("x_offset", CPUTypes.INT);
+		InterfaceParam x_size = engine_interface.addParam("x_size", CPUTypes.INT);
+		InterfaceParam w_size = engine_interface.addParam("w_size", CPUTypes.INT);
+		InterfaceParam z2_offset = engine_interface.addParam("z2_offset", CPUTypes.INT);
+		InterfaceParam z2_size = engine_interface.addParam("z2_size", CPUTypes.INT);
+		InterfaceParam zero = engine_interface.addConstant(0);
+
+		engine_interface.setTicks(s_kernelName, ticks);
+		engine_interface.setScalar(s_kernelName, "para_size", para_size);
+		engine_interface.setLMemLinearWrapped("old", z2_offset, z2_size, z2_size, zero);
+		engine_interface.setLMemLinearWrapped("x", x_offset, x_size, x_size*no, zero);
+		engine_interface.setStream("w", type, w_size);
+		engine_interface.setLMemLinearWrapped("z2", z2_offset, z2_size, z2_size, zero);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private void configBuild(CNN_FW_Conv_V0EngineParameters params) {
+		BuildConfig buildConfig = getBuildConfig();
+		buildConfig.setMPPRCostTableSearchRange(params.getMPPRStartCT(), params.getMPPREndCT());
+		buildConfig.setMPPRParallelism(params.getMPPRThreads());
+		buildConfig.setMPPRRetryNearMissesThreshold(params.getMPPRRetryThreshold());
+	}
+
+	public static void main(String[] args) {
+		CNN_FW_Conv_V0Manager manager = new CNN_FW_Conv_V0Manager(new CNN_FW_Conv_V0EngineParameters(args));
+		manager.build();
+	}
+}
