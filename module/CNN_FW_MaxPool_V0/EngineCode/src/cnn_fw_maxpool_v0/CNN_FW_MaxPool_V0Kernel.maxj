@@ -1,0 +1,94 @@
+package cnn_fw_maxpool_v0;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.WrapMode;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.utils.MathUtils;
+
+class CNN_FW_MaxPool_V0Kernel extends Kernel {
+
+	//private static final DFEType type = dfeFloat(8, 24);
+	private static final DFEType type = dfeFloat(11, 53);
+
+	protected CNN_FW_MaxPool_V0Kernel(KernelParameters parameters
+		,int iK,int iParaBitWidth
+		,int iRowSize,int iColSize,int iBatchSize) {
+		super(parameters);
+
+		DFEVar vParaSize = io.scalarInput("para_size",dfeUInt(iParaBitWidth));
+		int rowSizeBitWidth = MathUtils.bitsToAddress(iRowSize);
+		int colSizeBitWidth = MathUtils.bitsToAddress(iColSize);
+		int batchSizeBitWidth = MathUtils.bitsToAddress(iBatchSize);
+		int iKBitWidth = MathUtils.bitsToAddress(iK);
+
+		Count.Params paraBatch = control.count.makeParams(batchSizeBitWidth)
+			.withMax(iBatchSize);
+		Counter counterBatch = control.count.makeCounter(paraBatch);
+		Count.Params paraCol = control.count.makeParams(colSizeBitWidth)
+			.withEnable(counterBatch.getWrap())
+			.withMax(iColSize);
+		Counter counterCol = control.count.makeCounter(paraCol);
+		Count.Params paraRow = control.count.makeParams(rowSizeBitWidth)
+			.withEnable(counterCol.getWrap())
+			.withMax(iRowSize);
+		Counter counterRow = control.count.makeCounter(paraRow);
+		Count.Params paraPara = control.count.makeParams(iParaBitWidth)
+			.withEnable(counterRow.getWrap())
+			.withMax(vParaSize)
+			.withWrapMode(WrapMode.COUNT_LT_MAX_THEN_WRAP); //?wrap mode?
+		Counter counterPara = control.count.makeCounter(paraPara);
+		Count.Params paraSubCol = control.count.makeParams(iKBitWidth)
+			.withEnable(counterBatch.getWrap())
+			.withMax(iK);
+		Counter counterSubCol = control.count.makeCounter(paraSubCol);
+		Count.Params paraSubRow = control.count.makeParams(iKBitWidth)
+			.withEnable(counterCol.getWrap())
+			.withMax(iK);
+		Counter counterSubRow = control.count.makeCounter(paraSubRow);
+
+		DFEVar para = counterPara.getCount();
+		DFEVar row = counterRow.getCount();
+		DFEVar col = counterCol.getCount();
+		DFEVar batch = counterBatch.getCount();
+		DFEVar subRow = counterSubRow.getCount();
+		DFEVar subCol = counterSubCol.getCount();
+//		debug.dfePrintf("[%d/%d] ", para,vParaSize);
+//		debug.dfePrintf("[%d/%d] ", row,constant.var(dfeUInt(32),iRowSize));
+//		debug.dfePrintf("[%d/%d] ", col,constant.var(dfeUInt(32),iColSize));
+//		debug.dfePrintf("[%d/%d] ", subRow,constant.var(dfeUInt(32),iK));
+//		debug.dfePrintf("[%d/%d] ", subCol,constant.var(dfeUInt(32),iK));
+//		debug.dfePrintf("[%d/%d] ", batch,constant.var(dfeUInt(32),iBatchSize));
+//		debug.dfePrintf("\n");
+
+		DFEVar z2 = io.input("z2", type);
+		DFEVar[] next = new DFEVar[iK*iK];
+		DFEVar z = z2;
+		for (int i=0;i<iK;++i){
+			for (int j=0;j<iK;++j){
+				int offset = -(i*iColSize+j)*iBatchSize;
+				int bitIdx = i*iK+j;
+				next[bitIdx] = stream.offset(z2, offset);
+			}
+		}
+		for (int i=1;i<iK*iK;++i){
+			z = (z>next[i])?z:next[i];
+		}
+		DFEVar[] sels = new DFEVar[iK*iK];
+		for (int i=0;i<iK*iK;++i){
+			sels[i] = next[i].eq(z);
+		}
+		DFEVar sel = sels[0];
+		for (int i=1;i<iK*iK;++i){
+			sel = sel.cat(sels[i]);
+		}
+
+		DFEVar ctr_out = subRow.eq(iK-1) & subCol.eq(iK-1);
+		io.output("z", z, type, ctr_out);
+		io.output("sel", sel.cast(dfeUInt(iK*iK)), dfeUInt(iK*iK), ctr_out);
+	}
+
+}

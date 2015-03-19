@@ -1,0 +1,136 @@
+package cnn_fw_maxpool_v0;
+
+import com.maxeler.maxcompiler.v2.managers.BuildConfig;
+import com.maxeler.maxcompiler.v2.managers.custom.CustomManager;
+import com.maxeler.maxcompiler.v2.managers.custom.DFELink;
+import com.maxeler.maxcompiler.v2.managers.custom.blocks.KernelBlock;
+import com.maxeler.maxcompiler.v2.managers.custom.stdlib.MemoryControlGroup.MemoryAccessPattern;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.CPUTypes;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.EngineInterface;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.EngineInterface.Direction;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.InterfaceParam;
+
+public class CNN_FW_MaxPool_V0Manager extends CustomManager {
+
+	private static final String s_kernelName = "CNN_FW_MaxPool_V0Kernel";
+	//private static final CPUTypes type = CPUTypes.FLOAT;
+	private static final CPUTypes type = CPUTypes.DOUBLE;
+
+	public CNN_FW_MaxPool_V0Manager(CNN_FW_MaxPool_V0EngineParameters engineParameters) {
+		super(engineParameters);
+
+		KernelBlock block = addKernel(new CNN_FW_MaxPool_V0Kernel(
+			makeKernelParameters(s_kernelName),2,16,8,8,384));
+
+		DFELink cpu_to_lmem_at_lmem = addStreamToOnCardMemory("cpu_to_lmem_at_lmem", MemoryAccessPattern.LINEAR_1D);
+		DFELink cpu_to_lmem_at_cpu = addStreamFromCPU("cpu_to_lmem_at_cpu");
+		DFELink lmem_to_cpu_at_lmem = addStreamFromOnCardMemory("lmem_to_cpu_at_lmem", MemoryAccessPattern.LINEAR_1D);
+		DFELink lmem_to_cpu_at_cpu = addStreamToCPU("lmem_to_cpu_at_cpu");
+		DFELink data_link_z2 = addStreamFromOnCardMemory("z2", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_z = addStreamToOnCardMemory("z", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_sel = addStreamToOnCardMemory("sel", MemoryAccessPattern.LINEAR_1D);
+
+		cpu_to_lmem_at_lmem <== cpu_to_lmem_at_cpu;
+		lmem_to_cpu_at_cpu <== lmem_to_cpu_at_lmem;
+
+		block.getInput("z2") <== data_link_z2;
+		data_link_z <== block.getOutput("z");
+		data_link_sel <== block.getOutput("sel");
+
+		createSLiCinterface(modeRead("readLMem"));
+		createSLiCinterface(modeReadBytes("readLMemBytes"));
+		createSLiCinterface(modeWrite("writeLMem"));
+		createSLiCinterface(modeWriteBytes("writeLMemBytes"));
+		createSLiCinterface(modeDefault());
+
+		configBuild(engineParameters);
+	}
+
+	private static EngineInterface modeRead(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("lmem_to_cpu_at_cpu", type, size);
+		engine_interface.setLMemLinear("lmem_to_cpu_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeReadBytes(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("lmem_to_cpu_at_cpu", CPUTypes.UINT8, size);
+		engine_interface.setLMemLinear("lmem_to_cpu_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeWrite(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("cpu_to_lmem_at_cpu", type, size);
+		engine_interface.setLMemLinear("cpu_to_lmem_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeWriteBytes(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("cpu_to_lmem_at_cpu", CPUTypes.UINT8, size);
+		engine_interface.setLMemLinear("cpu_to_lmem_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeDefault() {
+		EngineInterface engine_interface = new EngineInterface();
+
+		InterfaceParam ticks = engine_interface.addParam("ticks", CPUTypes.INT);
+		InterfaceParam no = engine_interface.addParam("no", CPUTypes.INT);
+		InterfaceParam para_size = no;
+		InterfaceParam z2_offset = engine_interface.addParam("z2_offset", CPUTypes.INT);
+		InterfaceParam z2_size = engine_interface.addParam("z2_size", CPUTypes.INT);
+		InterfaceParam z_offset = engine_interface.addParam("z_offset", CPUTypes.INT);
+		InterfaceParam z_size = engine_interface.addParam("z_size", CPUTypes.INT);
+		InterfaceParam sel_offset = engine_interface.addParam("sel_offset", CPUTypes.INT);
+		InterfaceParam sel_size = engine_interface.addParam("sel_size", CPUTypes.INT);
+		//InterfaceParam zero = engine_interface.addConstant(0);
+
+		engine_interface.setTicks(s_kernelName, ticks);
+		engine_interface.setScalar(s_kernelName, "para_size", para_size);
+		engine_interface.setLMemLinear("z2", z2_offset, z2_size);
+		engine_interface.setLMemLinear("z", z_offset, z_size);
+		engine_interface.setLMemLinear("sel", sel_offset, sel_size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private void configBuild(CNN_FW_MaxPool_V0EngineParameters params) {
+		BuildConfig buildConfig = getBuildConfig();
+		buildConfig.setMPPRCostTableSearchRange(params.getMPPRStartCT(), params.getMPPREndCT());
+		buildConfig.setMPPRParallelism(params.getMPPRThreads());
+		buildConfig.setMPPRRetryNearMissesThreshold(params.getMPPRRetryThreshold());
+	}
+
+	public static void main(String[] args) {
+		CNN_FW_MaxPool_V0Manager manager = new CNN_FW_MaxPool_V0Manager(new CNN_FW_MaxPool_V0EngineParameters(args));
+		manager.build();
+	}
+}
