@@ -1,0 +1,124 @@
+package cnn_bp_conv_v0;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.WrapMode;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.memory.Memory;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.utils.MathUtils;
+
+class CNN_BP_Conv_V0Kernel extends Kernel {
+
+	//private static final DFEType type = dfeFloat(8, 24);
+	private static final DFEType type = dfeFloat(11, 53);
+
+	protected CNN_BP_Conv_V0Kernel(KernelParameters parameters
+		,int iK,int iParaBitWidth
+		,int iRowSize,int iColSize,int iBatchSize) {
+		super(parameters);
+
+		DFEVar vParaSize = io.scalarInput("para_size",dfeUInt(iParaBitWidth));
+		int rowSizeBitWidth = MathUtils.bitsToAddress(iRowSize);
+		int colSizeBitWidth = MathUtils.bitsToAddress(iColSize);
+		int batchSizeBitWidth = MathUtils.bitsToAddress(iBatchSize);
+		int iK2BitWidth = MathUtils.bitsToAddress(iK*iK);
+		//int wSizeBitWidth = MathUtils.bitsToAddress(iRowSize*iColSize*iBatchSize);
+		//int wGradSizeBitWidth = MathUtils.bitsToAddress(iK*iK*iBatchSize);
+
+		Count.Params paraBatch = control.count.makeParams(batchSizeBitWidth)
+			.withMax(iBatchSize);
+		Counter counterBatch = control.count.makeCounter(paraBatch);
+		Count.Params paraCol = control.count.makeParams(colSizeBitWidth)
+			.withEnable(counterBatch.getWrap())
+			.withMax(iColSize);
+		Counter counterCol = control.count.makeCounter(paraCol);
+		Count.Params paraRow = control.count.makeParams(rowSizeBitWidth)
+			.withEnable(counterCol.getWrap())
+			.withMax(iRowSize);
+		Counter counterRow = control.count.makeCounter(paraRow);
+		Count.Params paraPara = control.count.makeParams(iParaBitWidth)
+			.withEnable(counterRow.getWrap())
+			.withMax(vParaSize)
+			.withWrapMode(WrapMode.COUNT_LT_MAX_THEN_WRAP);
+		Counter counterPara = control.count.makeCounter(paraPara);
+		//Count.Params wPara = control.count.makeParams(wSizeBitWidth)
+		//	.withEnable(counterBatch.getWrap())
+		//	.withMax(iK*iK);
+		//Counter counterW = control.count.makeCounter(wPara);
+
+		DFEVar para = counterPara.getCount();
+		DFEVar row = counterRow.getCount();
+		DFEVar col = counterCol.getCount();
+		DFEVar batch = counterBatch.getCount();
+		//DFEVar wIdx = counterW.getCount();
+		//debug.dfePrintf("[%d/%d]", para, vParaSize);
+		//debug.dfePrintf("[%d/%d]", row, constant.var(dfeInt(32), iRowSize));
+		//debug.dfePrintf("[%d/%d]", col, constant.var(dfeInt(32), iColSize));
+		//debug.dfePrintf("[%d/%d]", batch, constant.var(dfeInt(32), iBatchSize));
+		//debug.dfePrintf("[%d/%d]", wIdx, constant.var(dfeInt(32), iRowSize*iColSize*iBatchSize));
+		//debug.dfePrintf("\n");
+
+		DFEVar ctr_in_w = (row<iK) & (col<iK) & (batch.eq(0));
+		DFEVar ctr_in_z2_grad = (row<=(iRowSize-iK)) & (col<=(iColSize-iK));
+		DFEVar ctr_out_w = (row>=(iRowSize-iK)) & (col>=(iColSize-iK));
+
+		DFEVar in_w = io.input("w", type, ctr_in_w);
+		Memory<DFEVar> mappedW = mem.alloc(type, iK*iK);
+		mappedW.write((row.cast(dfeUInt(iK2BitWidth))*iK+col.cast(dfeUInt(iK2BitWidth))), in_w, ctr_in_w);
+		DFEVar z2_grad = io.input("z2_grad", type, ctr_in_z2_grad);
+		DFEVar x = io.input("x", type);
+		DFEVar x_grad_old = io.input("x_grad_old", type);
+
+		DFEType storageType = dfeRawBits(type.getTotalBits()*iK*iK);
+		DFEVar wGradNew = storageType.newInstance(this);
+		//Memory<DFEVar> mappedW_grad = mem.alloc(storageType,iBatchSize);
+		//version 1:
+		//DFEVar wGradOld = mappedW_grad.port(batch, wGradNew, constant.var(true), RamWriteMode.READ_FIRST);
+		//version 2:
+		//DFEVar wGradOld = mappedW_grad.read(batch);
+		//mappedW_grad.write(batch, wGradNew, constant.var(true));
+		//version 3:
+		DFEVar wGradOld = stream.offset(wGradNew, -iBatchSize);
+		DFEVar[] wGradOlds = new DFEVar[iK*iK];
+		DFEVar[] wGradNews = new DFEVar[iK*iK];
+		DFEVar x_grad = x_grad_old;
+		DFEVar w_grad = constant.var(type,0);
+		for (int i=0;i<iK;++i){
+			for (int j=0;j<iK;++j){
+				int tid = i*iK+j;
+				DFEVar inRange = (row>=i) & (col>=j) & (row<=i+(iRowSize-iK)) & (col<=j+(iColSize-iK));
+				DFEVar addr = constant.var(dfeUInt(iK2BitWidth),i*iK+j);
+				DFEVar w_value = (row.eq(i) & col.eq(j))?in_w:mappedW.read(addr);
+				//DFEVar tmp = x_grad;
+				x_grad = (inRange)
+					?x_grad+w_value*stream.offset(z2_grad, -((i)*iColSize+(j))*iBatchSize) // here's iColSize, not (iColSize-iK+1)
+					:x_grad;
+
+				wGradOlds[tid] = wGradOld.slice((i*iK+j)*type.getTotalBits(),type.getTotalBits()).cast(type);
+				wGradNews[tid] = ((row.eq(i) & col.eq(j))?constant.var(type, 0.0):wGradOlds[tid])+
+					(inRange?(x*stream.offset(z2_grad, -((i)*iColSize+(j))*iBatchSize)):constant.var(type, 0.0));
+				w_grad = (row.eq(iRowSize-iK+i) & col.eq(iColSize-iK+j))?wGradNews[tid]:w_grad;
+
+				//if (i==0 && j==0)
+				//debug.dfePrintf( batch.eq(0),
+				//	"[%d][%d][%d][%d][%d][%d] (%f,%f,%f) (%f,%f) (%f,%f)\n",
+				//	para,row,col,batch,constant.var(dfeInt(32),i),constant.var(dfeInt(32),j),
+				//	z2_grad,x,w_value,
+				//	tmp,x_grad,
+				//	wGradOlds[tid],wGradNews[tid]);
+			}
+		}
+		DFEVar wGradTmp = wGradNews[0];
+		for (int i=1;i<iK*iK;++i){
+			wGradTmp = wGradNews[i].cat(wGradTmp);
+		}
+		wGradNew <== wGradTmp;
+
+		io.output("w_grad", w_grad, type, ctr_out_w);
+		io.output("x_grad", x_grad, type);
+	}
+
+}
