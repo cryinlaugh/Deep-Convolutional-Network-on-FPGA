@@ -1,0 +1,107 @@
+package cnn_fw_softmax_v0;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.KernelMath;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
+import com.maxeler.maxcompiler.v2.utils.MathUtils;
+
+class CNN_FW_Softmax_V0Kernel extends Kernel {
+
+	//private static final DFEType type = dfeFloat(8, 24);
+	private static final DFEType type = dfeFloat(11, 53);
+	private static final DFEType cateType = dfeInt(32);
+
+	/* Matrix X(dim_1,dim_2) * Matrix W(dim_1,dim_3) = Matrix Z(dim_2,dim_3), where dim_3 is small
+	 * #Computation = dim_1*dim_2*dim_3 = dim_1*vec_size*dim_2_sub*dim_3, put (dim_2_sub*dim_3) in 1 cycle.
+	 */
+	protected CNN_FW_Softmax_V0Kernel(KernelParameters parameters
+		,int iDim1BitWidth,int iDim2,int iVecSize,int iDim3) {
+		super(parameters);
+
+		DFEVectorType<DFEVar> vecType0 = new DFEVectorType<DFEVar>(type,iVecSize);
+		DFEVectorType<DFEVar> vecType1 = new DFEVectorType<DFEVar>(type,iDim3);
+		DFEVectorType<DFEVar> vecType2 = new DFEVectorType<DFEVar>(type,iVecSize*iDim3);
+		DFEVectorType<DFEVar> cateVecType = new DFEVectorType<DFEVar>(cateType,iVecSize);
+		DFEVar vDim1 = io.scalarInput("dim_1",dfeUInt(iDim1BitWidth));
+		int iDim2SubSize = (iDim2+iVecSize-1)/iVecSize;
+		int iDim2BitWidth = MathUtils.bitsToAddress(iDim2SubSize);
+
+		Count.Params paraDim2 = control.count.makeParams(iDim2BitWidth)
+			.withMax(iDim2SubSize);
+		Counter counterDim2 = control.count.makeCounter(paraDim2);
+		Count.Params paraDim1 = control.count.makeParams(iDim1BitWidth)
+			.withEnable(counterDim2.getWrap())
+			.withMax(vDim1);
+		Counter counterDim1 = control.count.makeCounter(paraDim1);
+
+		DFEVar dim1 = counterDim1.getCount();
+		DFEVar dim2 = counterDim2.getCount();
+		//debug.dfePrintf("[%d/%d]", dim1, vDim1);
+		//debug.dfePrintf("[%d/%d]", dim2, constant.var(dfeInt(32),iDim2SubSize));
+		//debug.dfePrintf("\n");
+
+		DFEVar first = dim1.eq(0);
+		DFEVar last = dim1.eq(vDim1-1);
+		DFEVector<DFEVar> x = io.input("x", vecType0);
+		DFEVector<DFEVar> w = io.input("w", vecType1, dim2.eq(0));
+
+		DFEVector<DFEVar> softmax = vecType2.newInstance(this);
+		DFEVector<DFEVar> pred = cateVecType.newInstance(this);
+
+		DFEVar[] z = new DFEVar[iVecSize*iDim3];
+		DFEVar[] z_old = new DFEVar[iVecSize*iDim3];
+		DFEVar[] sub = new DFEVar[iVecSize*iDim3];
+		DFEVar[] preds = new DFEVar[iVecSize];
+		DFEVar[] max = new DFEVar[iVecSize];
+		DFEVar[] sum = new DFEVar[iVecSize];
+
+		for (int i=0;i<iVecSize;++i){
+			for (int j=0;j<iDim3;++j){
+				int tid = i*iDim3+j;
+				z[tid] = type.newInstance(this);
+				z_old[tid] = (first)?constant.var(type,0):stream.offset(z[tid], -iDim2SubSize);
+				z[tid] <== z_old[tid]+x[i]*w[j];
+			}
+			max[i] = z[i*iDim3];
+			preds[i] = constant.var(cateType,0);
+			for (int j=1;j<iDim3;++j){
+				int tid = i*iDim3+j;
+				DFEVar f = z[tid]>max[i];
+				max[i] = (f)?z[tid]:max[i];
+				preds[i] = (f)?constant.var(cateType,j):preds[i];
+			}
+			for (int j=0;j<iDim3;++j){
+				int tid = i*iDim3+j;
+				sub[tid] = KernelMath.exp(z[tid]-max[i]);
+			}
+			sum[i] = sub[i*iDim3];
+			for (int j=1;j<iDim3;++j){
+				int tid = i*iDim3+j;
+				sum[i] = sum[i]+sub[tid];
+			}
+			for (int j=0;j<iDim3;++j){
+				int tid = i*iDim3+j;
+				softmax[tid] <== sub[tid]/sum[i];
+			}
+			pred[i] <== preds[i];
+		}
+
+		io.output("softmax", softmax, vecType2, last);
+		io.output("pred", pred, cateVecType, last);
+		//for (int i=0;i<iVecSize;++i){
+		//	debug.dfePrintf(last, "[%d][%d]\t[%f][%f][%d]\n",dim2,constant.var(dfeInt(32),i),max[i],sum[i],pred[i]);
+		//	for (int j=0;j<iDim3;++j){
+		//		int tid = i*iDim3+j;
+		//		debug.dfePrintf(last, "[%d][%d][%d][%f][%f][%f]\n",dim2,constant.var(dfeInt(32),i)
+		//			,constant.var(dfeInt(32),j),z[tid],sub[tid],softmax[tid]);
+		//	}
+		//}
+	}
+
+}
