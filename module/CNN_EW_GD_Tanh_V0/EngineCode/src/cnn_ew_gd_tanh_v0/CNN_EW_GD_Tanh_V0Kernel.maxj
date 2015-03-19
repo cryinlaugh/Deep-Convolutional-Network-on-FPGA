@@ -1,0 +1,27 @@
+package cnn_ew_gd_tanh_v0;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.KernelMath;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+
+class CNN_EW_GD_Tanh_V0Kernel extends Kernel {
+
+	//private static final DFEType type = dfeFloat(8, 24);
+	private static final DFEType type = dfeFloat(11, 53);
+
+	protected CNN_EW_GD_Tanh_V0Kernel(KernelParameters parameters) {
+		super(parameters);
+
+		DFEVar z = io.input("input_value", type);
+		DFEVar x = io.input("input_grad", type);
+
+		DFEVar dcosh = 2.0/(KernelMath.exp(z, type)+KernelMath.exp(-z, type));
+		DFEVar gradz = dcosh*dcosh;
+		DFEVar ret = x*gradz;
+
+		io.output("output", ret, type);
+	}
+
+}
