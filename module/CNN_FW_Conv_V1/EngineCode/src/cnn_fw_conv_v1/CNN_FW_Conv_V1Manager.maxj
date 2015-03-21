@@ -1,6 +1,7 @@
 package cnn_fw_conv_v1;
 
 import com.maxeler.maxcompiler.v2.managers.BuildConfig;
+import com.maxeler.maxcompiler.v2.managers.BuildConfig.Effort;
 import com.maxeler.maxcompiler.v2.managers.custom.CustomManager;
 import com.maxeler.maxcompiler.v2.managers.custom.DFELink;
 import com.maxeler.maxcompiler.v2.managers.custom.blocks.KernelBlock;
@@ -20,7 +21,7 @@ public class CNN_FW_Conv_V1Manager extends CustomManager {
 	private static final int iRowSize = 12;
 	private static final int iColSize = 12;
 	private static final int iBatchSize = 384;
-	private static final int iVecSize = 4;
+	private static final int iVecSize = 6;
 
 	public CNN_FW_Conv_V1Manager(CNN_FW_Conv_V1EngineParameters engineParameters) {
 		super(engineParameters);
@@ -35,7 +36,7 @@ public class CNN_FW_Conv_V1Manager extends CustomManager {
 		DFELink data_link_old = addStreamFromOnCardMemory("old", MemoryAccessPattern.LINEAR_1D);
 		DFELink data_link_x = addStreamFromOnCardMemory("x", MemoryAccessPattern.LINEAR_1D);
 		DFELink data_link_w = addStreamFromCPU("w");
-		DFELink data_link_z2 = addStreamToOnCardMemory("z2", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_z = addStreamToOnCardMemory("z", MemoryAccessPattern.LINEAR_1D);
 
 		cpu_to_lmem_at_lmem <== cpu_to_lmem_at_cpu;
 		lmem_to_cpu_at_cpu <== lmem_to_cpu_at_lmem;
@@ -43,7 +44,7 @@ public class CNN_FW_Conv_V1Manager extends CustomManager {
 		block.getInput("x") <== data_link_x;
 		block.getInput("old") <== data_link_old;
 		block.getInput("w") <== data_link_w;
-		data_link_z2 <== block.getOutput("z2");
+		data_link_z <== block.getOutput("z");
 
 		createSLiCinterface(modeRead("readLMem"));
 		createSLiCinterface(modeWrite("writeLMem"));
@@ -81,23 +82,23 @@ public class CNN_FW_Conv_V1Manager extends CustomManager {
 	private static EngineInterface modeDefault() {
 		EngineInterface engine_interface = new EngineInterface();
 
-		InterfaceParam ticks = engine_interface.addParam("ticks", CPUTypes.INT);
 		InterfaceParam no = engine_interface.addParam("no", CPUTypes.INT);
-		InterfaceParam para_size = no;
-		//InterfaceParam ni = engine_interface.addParam("ni", CPUTypes.INT);
 		InterfaceParam x_offset = engine_interface.addParam("x_offset", CPUTypes.INT);
-		InterfaceParam x_size = engine_interface.addParam("x_size", CPUTypes.INT);
-		InterfaceParam w_size = engine_interface.addParam("w_size", CPUTypes.INT);
-		InterfaceParam z2_offset = engine_interface.addParam("z2_offset", CPUTypes.INT);
-		InterfaceParam z2_size = engine_interface.addParam("z2_size", CPUTypes.INT);
+		InterfaceParam z_offset = engine_interface.addParam("z_offset", CPUTypes.INT);
+
 		InterfaceParam zero = engine_interface.addConstant(0);
+		InterfaceParam ticks = no*(iRowSize*iColSize*iBatchSize/iVecSize);
+		InterfaceParam para_size = no;
+		InterfaceParam x_size = engine_interface.addConstant(iRowSize*iColSize*iBatchSize*type.sizeInBytes());
+		InterfaceParam w_size = no*(iK*iK*type.sizeInBytes());
+		InterfaceParam z_size = no*((iRowSize-iK+1)*(iColSize-iK+1)*iBatchSize*type.sizeInBytes());
 
 		engine_interface.setTicks(s_kernelName, ticks);
 		engine_interface.setScalar(s_kernelName, "para_size", para_size);
-		engine_interface.setLMemLinearWrapped("old", z2_offset, z2_size, z2_size, zero);
+		engine_interface.setLMemLinear("old", z_offset, z_size);
 		engine_interface.setLMemLinearWrapped("x", x_offset, x_size, x_size*no, zero);
 		engine_interface.setStream("w", type, w_size);
-		engine_interface.setLMemLinearWrapped("z2", z2_offset, z2_size, z2_size, zero);
+		engine_interface.setLMemLinear("z", z_offset, z_size);
 
 		engine_interface.ignoreAll(Direction.IN_OUT);
 		return engine_interface;
@@ -106,7 +107,9 @@ public class CNN_FW_Conv_V1Manager extends CustomManager {
 	private void configBuild(CNN_FW_Conv_V1EngineParameters params) {
 		BuildConfig buildConfig = getBuildConfig();
 		buildConfig.setMPPRCostTableSearchRange(params.getMPPRStartCT(), params.getMPPREndCT());
-		buildConfig.setMPPRParallelism(params.getMPPRThreads());
+		//buildConfig.setMPPRParallelism(params.getMPPRThreads());
+		buildConfig.setMPPRParallelism(4);
+		buildConfig.setBuildEffort(Effort.LOW);
 		buildConfig.setMPPRRetryNearMissesThreshold(params.getMPPRRetryThreshold());
 	}
 

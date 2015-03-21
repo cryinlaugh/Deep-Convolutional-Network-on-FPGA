@@ -56,25 +56,17 @@ class CNN_FW_MaxPool_V0Kernel extends Kernel {
 		DFEVar batch = counterBatch.getCount();
 		DFEVar subRow = counterSubRow.getCount();
 		DFEVar subCol = counterSubCol.getCount();
-//		debug.dfePrintf("[%d/%d] ", para,vParaSize);
-//		debug.dfePrintf("[%d/%d] ", row,constant.var(dfeUInt(32),iRowSize));
-//		debug.dfePrintf("[%d/%d] ", col,constant.var(dfeUInt(32),iColSize));
-//		debug.dfePrintf("[%d/%d] ", subRow,constant.var(dfeUInt(32),iK));
-//		debug.dfePrintf("[%d/%d] ", subCol,constant.var(dfeUInt(32),iK));
-//		debug.dfePrintf("[%d/%d] ", batch,constant.var(dfeUInt(32),iBatchSize));
-//		debug.dfePrintf("\n");
 
 		DFEVar z2 = io.input("z2", type);
 		DFEVar[] next = new DFEVar[iK*iK];
-		DFEVar z = z2;
-		for (int i=0;i<iK;++i){
-			for (int j=0;j<iK;++j){
-				int offset = -(i*iColSize+j)*iBatchSize;
-				int bitIdx = i*iK+j;
-				next[bitIdx] = stream.offset(z2, offset);
-			}
+		for (int tid=0;tid<iK*iK;++tid){
+			int i = iK-1-(tid/iK);
+			int j = iK-1-(tid%iK);
+			int offset = -(i*iColSize+j)*iBatchSize;
+			next[tid] = stream.offset(z2, offset);
 		}
-		for (int i=1;i<iK*iK;++i){
+		DFEVar z = z2;
+		for (int i=0;i<iK*iK-1;++i){
 			z = (z>next[i])?z:next[i];
 		}
 		DFEVar[] sels = new DFEVar[iK*iK];
@@ -83,12 +75,12 @@ class CNN_FW_MaxPool_V0Kernel extends Kernel {
 		}
 		DFEVar sel = sels[0];
 		for (int i=1;i<iK*iK;++i){
-			sel = sel.cat(sels[i]);
+			sel = sels[i].cat(sel);
 		}
 
 		DFEVar ctr_out = subRow.eq(iK-1) & subCol.eq(iK-1);
 		io.output("z", z, type, ctr_out);
-		io.output("sel", sel.cast(dfeUInt(iK*iK)), dfeUInt(iK*iK), ctr_out);
+		io.output("sel", sel, dfeRawBits(iK*iK), ctr_out);
 	}
 
 }

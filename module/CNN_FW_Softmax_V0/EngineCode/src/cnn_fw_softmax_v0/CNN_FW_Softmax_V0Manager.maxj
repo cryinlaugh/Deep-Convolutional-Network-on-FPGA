@@ -18,7 +18,7 @@ public class CNN_FW_Softmax_V0Manager extends CustomManager {
 	private static final CPUTypes cateType = CPUTypes.INT32;
 	private static final int iParaBitWidth = 16;
 	private static final int iBatchSize = 384;
-	private static final int iVecSize = 4;
+	private static final int iVecSize = 1;
 	private static final int iK = 10;
 
 	public CNN_FW_Softmax_V0Manager(CNN_FW_Softmax_V0EngineParameters engineParameters) {

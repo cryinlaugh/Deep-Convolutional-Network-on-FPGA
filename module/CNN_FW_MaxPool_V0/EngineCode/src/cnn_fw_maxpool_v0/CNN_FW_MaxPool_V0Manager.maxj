@@ -15,12 +15,17 @@ public class CNN_FW_MaxPool_V0Manager extends CustomManager {
 	private static final String s_kernelName = "CNN_FW_MaxPool_V0Kernel";
 	//private static final CPUTypes type = CPUTypes.FLOAT;
 	private static final CPUTypes type = CPUTypes.DOUBLE;
+	private static final int iK = 2;
+	private static final int iParaBitWidth = 16;
+	private static final int iRowSize = 8;
+	private static final int iColSize = 8;
+	private static final int iBatchSize = 384;
 
 	public CNN_FW_MaxPool_V0Manager(CNN_FW_MaxPool_V0EngineParameters engineParameters) {
 		super(engineParameters);
 
-		KernelBlock block = addKernel(new CNN_FW_MaxPool_V0Kernel(
-			makeKernelParameters(s_kernelName),2,16,8,8,384));
+		KernelBlock block = addKernel(new CNN_FW_MaxPool_V0Kernel(makeKernelParameters(s_kernelName),
+			iK,iParaBitWidth,iRowSize,iColSize,iBatchSize));
 
 		DFELink cpu_to_lmem_at_lmem = addStreamToOnCardMemory("cpu_to_lmem_at_lmem", MemoryAccessPattern.LINEAR_1D);
 		DFELink cpu_to_lmem_at_cpu = addStreamFromCPU("cpu_to_lmem_at_cpu");

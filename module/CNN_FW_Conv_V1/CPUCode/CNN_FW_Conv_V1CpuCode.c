@@ -9,15 +9,13 @@ typedef double real;
 
 int main(void)
 {
+	const int ni = 1;
 	const int no = 2;
-	const int ni = 2;
 	const int k = 5;
 	const int row = 12;
 	const int col = 12;
 	const int batch_size = 384;
-	const int vec_size = 4;
 
-	int ticks = no*row*col*batch_size/vec_size;
 	int w_size = no*k*k*sizeof(real);
 	int x_offset = 0;
 	int x_size = row*col*batch_size*sizeof(real);
@@ -49,13 +47,9 @@ int main(void)
 
 	printf("Running on DFE.\n");
 	act = max_actions_init(maxfile, "default");
-	max_set_param_uint64t(act, "ticks", ticks);
 	max_set_param_uint64t(act, "no", no);
-	max_set_param_uint64t(act, "w_size", w_size);
 	max_set_param_uint64t(act, "x_offset", x_offset);
-	max_set_param_uint64t(act, "x_size", x_size);
-	max_set_param_uint64t(act, "z2_offset", z_offset);
-	max_set_param_uint64t(act, "z2_size", z_size);
+	max_set_param_uint64t(act, "z_offset", z_offset);
 	max_queue_input(act, "w", w, w_size);
 	max_run(engine, act);
 

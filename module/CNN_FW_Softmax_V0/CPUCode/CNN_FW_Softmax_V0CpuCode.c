@@ -12,7 +12,7 @@ int main(void)
 {
 	const int dim_1 = 500;
 	const int dim_2 = 384;
-	const int vec_size = 4;
+	const int vec_size = 1;
 	const int dim_2_vec = dim_2/vec_size;
 	const int dim_3 = 10;
 
