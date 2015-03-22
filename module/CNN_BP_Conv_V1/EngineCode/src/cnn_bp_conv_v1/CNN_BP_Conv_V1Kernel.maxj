@@ -1,4 +1,4 @@
-package cnn_bp_conv_v0;
+package cnn_bp_conv_v1;
 
 import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
 import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
@@ -7,26 +7,30 @@ import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.memory.Memory;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
 import com.maxeler.maxcompiler.v2.utils.MathUtils;
 
-class CNN_BP_Conv_V0Kernel extends Kernel {
+class CNN_BP_Conv_V1Kernel extends Kernel {
 
 	//private static final DFEType type = dfeFloat(8, 24);
 	private static final DFEType type = dfeFloat(11, 53);
 
-	protected CNN_BP_Conv_V0Kernel(KernelParameters parameters
+	protected CNN_BP_Conv_V1Kernel(KernelParameters parameters
 		,int iK,int iParaBitWidth
-		,int iRowSize,int iColSize,int iBatchSize) {
+		,int iRowSize,int iColSize,int iBatchSize,int iVecSize) {
 		super(parameters);
 
+		DFEVectorType<DFEVar> vecType = new DFEVectorType<DFEVar>(type,iVecSize);
 		DFEVar vParaSize = io.scalarInput("para_size",dfeUInt(iParaBitWidth));
 		int rowSizeBitWidth = MathUtils.bitsToAddress(iRowSize);
 		int colSizeBitWidth = MathUtils.bitsToAddress(iColSize);
-		int batchSizeBitWidth = MathUtils.bitsToAddress(iBatchSize);
+		int batchSubSize = (iBatchSize+iVecSize-1)/iVecSize;
+		int batchSubBitWidth = MathUtils.bitsToAddress(batchSubSize);
 		int iK2BitWidth = MathUtils.bitsToAddress(iK*iK);
 
-		Count.Params paraBatch = control.count.makeParams(batchSizeBitWidth)
-			.withMax(iBatchSize);
+		Count.Params paraBatch = control.count.makeParams(batchSubBitWidth)
+			.withMax(batchSubSize);
 		Counter counterBatch = control.count.makeCounter(paraBatch);
 		Count.Params paraCol = control.count.makeParams(colSizeBitWidth)
 			.withEnable(counterBatch.getWrap())
@@ -51,43 +55,56 @@ class CNN_BP_Conv_V0Kernel extends Kernel {
 		Memory<DFEVar> mappedW = mem.alloc(type, iK*iK);
 		mappedW.write((row.cast(dfeUInt(iK2BitWidth))*iK+col.cast(dfeUInt(iK2BitWidth))), in_w, ctr_in_w);
 		DFEVar ctr_in_z_grad = (row<=(iRowSize-iK)) & (col<=(iColSize-iK));
-		DFEVar z_grad = io.input("z_grad", type, ctr_in_z_grad);
-		DFEVar x = io.input("x", type);
-		DFEVar x_grad_old = io.input("x_grad_old", type);
+		DFEVector<DFEVar> z_grad = io.input("z_grad", vecType, ctr_in_z_grad);
+		DFEVector<DFEVar> x = io.input("x", vecType);
+		DFEVector<DFEVar> x_grad_old = io.input("x_grad_old", vecType);
 
-		DFEType storageType = dfeRawBits(type.getTotalBits()*iK*iK);
+		DFEType storageType = dfeRawBits(iK*iK*iVecSize*type.getTotalBits());
 		DFEVar wGradNew = storageType.newInstance(this);
-		DFEVar wGradOld = stream.offset(wGradNew, -iBatchSize);
-		DFEVar[] wGradOlds = new DFEVar[iK*iK];
-		DFEVar[] wGradNews = new DFEVar[iK*iK];
-		DFEVar x_grad = x_grad_old;
-		DFEVar w_grad = constant.var(type,0);
+		DFEVar wGradOld = stream.offset(wGradNew, -batchSubSize);
+		DFEVar[] wGradOlds = new DFEVar[iK*iK*iVecSize];
+		DFEVar[] wGradNews = new DFEVar[iK*iK*iVecSize];
+		DFEVar[] x_grads = new DFEVar[iVecSize];
+		DFEVar[] w_grads = new DFEVar[iVecSize];
+		DFEVector<DFEVar> w_grad = vecType.newInstance(this);
+		DFEVector<DFEVar> x_grad = vecType.newInstance(this);
+		for (int k=0;k<iVecSize;++k){
+			x_grads[k] = x_grad_old[k];
+			w_grads[k] = constant.var(type,0.0);
+		}
 		for (int i=0;i<iK;++i){
 			for (int j=0;j<iK;++j){
-				int tid = i*iK+j;
 				DFEVar inRange = (row>=i) & (col>=j) & (row<=i+(iRowSize-iK)) & (col<=j+(iColSize-iK));
 				DFEVar first = row.eq(i) & col.eq(j);
 				DFEVar last = row.eq(iRowSize-iK+i) & col.eq(iColSize-iK+j);
 				DFEVar addr = constant.var(dfeUInt(iK2BitWidth),i*iK+j);
 				DFEVar w_value = (first)?in_w:mappedW.read(addr);
-				DFEVar z_grad_old = (inRange)
-					?stream.offset(z_grad, -(i*iColSize+j)*iBatchSize) // here's iColSize, not (iColSize-iK+1)
-					:constant.var(type,0.0);
-				x_grad = x_grad+w_value*z_grad_old;
-				wGradOlds[tid] = wGradOld.slice((i*iK+j)*type.getTotalBits(),type.getTotalBits()).cast(type);
-				wGradNews[tid] = ((first)?constant.var(type, 0.0):wGradOlds[tid])+x*z_grad_old;
-				w_grad = (last)?wGradNews[tid]:w_grad;
+				DFEVector<DFEVar> z_grad_old = (inRange)
+					?stream.offset(z_grad, -(i*iColSize+j)*batchSubSize) // here's iColSize, not (iColSize-iK+1)
+					:constant.vect(iVecSize, type, 0.0);
+				for (int k=0;k<iVecSize;++k){
+					int tid = (i*iK+j)*iVecSize+k;
+					x_grads[k] = x_grads[k]+w_value*z_grad_old[k];
+					wGradOlds[tid] = wGradOld.slice(tid*type.getTotalBits(),type.getTotalBits()).cast(type);
+					wGradNews[tid] = ((first)?constant.var(type, 0.0):wGradOlds[tid])
+						+x[k]*z_grad_old[k];
+					w_grads[k] = (last)?wGradNews[tid]:w_grads[k];
+				}
 			}
 		}
+		for (int k=0;k<iVecSize;++k){
+			w_grad[k] <== w_grads[k];
+			x_grad[k] <== x_grads[k];
+		}
 		DFEVar wGradTmp = wGradNews[0];
-		for (int i=1;i<iK*iK;++i){
+		for (int i=1;i<iK*iK*iVecSize;++i){
 			wGradTmp = wGradNews[i].cat(wGradTmp);
 		}
 		wGradNew <== wGradTmp;
 
 		DFEVar ctr_out_w = (row>=(iRowSize-iK)) & (col>=(iColSize-iK));
-		io.output("w_grad", w_grad, type, ctr_out_w);
-		io.output("x_grad", x_grad, type);
+		io.output("w_grad", w_grad, vecType, ctr_out_w);
+		io.output("x_grad", x_grad, vecType);
 	}
 
 }

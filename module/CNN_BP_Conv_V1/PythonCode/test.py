@@ -4,14 +4,14 @@ sys.path.append(os.getenv('CNN_TEST_UTIL_PATH'))
 import time
 import cPickle
 import utils
-utils.PROJ_NAME = 'CNN_BP_Conv_V0'
+utils.PROJ_NAME = 'CNN_BP_Conv_V1'
 TEST_DATA_PATH=os.getenv('CNN_TEST_DATA_PATH')
 TEST_DATA_SET = map(lambda f:os.path.join(TEST_DATA_PATH+'/conv_small',f),os.listdir(TEST_DATA_PATH+'/conv_small'))
 type_size = 8
 
 def test(filename='data.bin'):
     t0 = time.time()
-    import CNN_BP_Conv_V0 as cnn
+    import CNN_BP_Conv_V1 as cnn
     print '[INFO] loading data : %s' %(filename)
     with open(filename) as inf:
         para = cPickle.load(inf)
@@ -41,19 +41,19 @@ def test(filename='data.bin'):
     print '[INFO] time used = %f' %(time.time()-t0)
 
     print '[INFO] running writeLMem'
-    cnn.CNN_BP_Conv_V0_writeLMem(
+    cnn.CNN_BP_Conv_V1_writeLMem(
         param_offset = z_grad_offset,
         param_size = z_grad_size,
         instream_cpu_to_lmem_at_cpu = fz_grad
     )
     print '[INFO] running writeLMem'
-    cnn.CNN_BP_Conv_V0_writeLMem(
+    cnn.CNN_BP_Conv_V1_writeLMem(
         param_offset = x_offset,
         param_size = x_size,
         instream_cpu_to_lmem_at_cpu = fx
     )
     print '[INFO] running writeLMem'
-    cnn.CNN_BP_Conv_V0_writeLMem(
+    cnn.CNN_BP_Conv_V1_writeLMem(
         param_offset = x_grad_old_offset,
         param_size = x_grad_old_size,
         instream_cpu_to_lmem_at_cpu = [0.0]*x_grad_old_cnt
@@ -64,7 +64,7 @@ def test(filename='data.bin'):
     res_w_grad = []
     for st in xrange(ni):
         print '[INFO] running Conv ',st
-        tmp = cnn.CNN_BP_Conv_V0(
+        tmp = cnn.CNN_BP_Conv_V1(
             param_no = no,
             param_x_grad_offset = x_grad_offset+x_grad_size_iter*st,
             param_x_grad_old_offset = x_grad_old_offset+x_grad_old_size_iter*st,
@@ -78,7 +78,7 @@ def test(filename='data.bin'):
         print '[INFO] time used = %f' %(time.time()-t0)
 
     print '[INFO] running readLMem'
-    res_x_grad = cnn.CNN_BP_Conv_V0_readLMem(
+    res_x_grad = cnn.CNN_BP_Conv_V1_readLMem(
         param_offset = x_grad_offset,
         param_size = x_grad_size
     )

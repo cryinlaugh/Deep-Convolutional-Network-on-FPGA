@@ -27,7 +27,7 @@ int main(void)
 	real* z = (real*)malloc(z_size);
 	uchar* sel = (uchar*)malloc(sel_size);
 
-	max_file_t *maxfile = CNN_FW_MaxPool_V0_init();
+	max_file_t *maxfile = CNN_FW_MaxPool_V1_init();
 	max_engine_t *engine = max_load(maxfile, "*");
 
 	printf("Writing to LMem.\n");

@@ -4,14 +4,14 @@ sys.path.append(os.getenv('CNN_TEST_UTIL_PATH'))
 import time
 import cPickle
 import utils
-utils.PROJ_NAME = 'CNN_FW_MaxPool_V0'
+utils.PROJ_NAME = 'CNN_FW_MaxPool_V1'
 TEST_DATA_PATH=os.getenv('CNN_TEST_DATA_PATH')+'/max_pool_small'
 TEST_DATA_SET = map(lambda f:os.path.join(TEST_DATA_PATH,f),os.listdir(TEST_DATA_PATH))
 type_size = 8
 
 def test(filename='data.bin'):
     t0 = time.time()
-    import CNN_FW_MaxPool_V0 as cnn
+    import CNN_FW_MaxPool_V1 as cnn
     print '[INFO] loading data : %s' %(filename)
     with open(filename) as inf:
         para = cPickle.load(inf)
@@ -30,7 +30,7 @@ def test(filename='data.bin'):
     print '[INFO] time used = %f' %(time.time()-t0)
 
     print '[INFO] running writeLMem'
-    cnn.CNN_FW_MaxPool_V0_writeLMem(
+    cnn.CNN_FW_MaxPool_V1_writeLMem(
         param_offset = z2_offset,
         param_size = z2_size,
         instream_cpu_to_lmem_at_cpu = fz2
@@ -39,7 +39,7 @@ def test(filename='data.bin'):
     print '[INFO] time used = %f' %(time.time()-t0)
 
     print '[INFO] running Conv'
-    cnn.CNN_FW_MaxPool_V0(
+    cnn.CNN_FW_MaxPool_V1(
         param_no = no,
         param_sel_offset = sel_offset,
         param_z2_offset = z2_offset,
@@ -49,7 +49,7 @@ def test(filename='data.bin'):
     print '[INFO] time used = %f' %(time.time()-t0)
 
     print '[INFO] running readLMem'
-    res_z = cnn.CNN_FW_MaxPool_V0_readLMem(
+    res_z = cnn.CNN_FW_MaxPool_V1_readLMem(
         param_offset = z_offset,
         param_size = z_size
     )
@@ -57,7 +57,7 @@ def test(filename='data.bin'):
     print '[INFO] time used = %f' %(time.time()-t0)
 
     print '[INFO] running readLMemBytes'
-    res_selw = cnn.CNN_FW_MaxPool_V0_readLMemBytes(
+    res_selw = cnn.CNN_FW_MaxPool_V1_readLMemBytes(
         param_offset = sel_offset,
         param_size = sel_size
     )

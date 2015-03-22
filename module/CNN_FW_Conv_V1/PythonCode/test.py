@@ -5,7 +5,8 @@ import time
 import cPickle
 import utils
 utils.PROJ_NAME = 'CNN_FW_Conv_V1'
-
+TEST_DATA_PATH=os.getenv('CNN_TEST_DATA_PATH')+'/conv_small'
+TEST_DATA_SET = map(lambda f:os.path.join(TEST_DATA_PATH,f),os.listdir(TEST_DATA_PATH))
 type_size = 8
 
 def test(filename='data.bin'):
@@ -64,8 +65,9 @@ def test(filename='data.bin'):
     print '[INFO] time used = %f' %(time.time()-t0)
 
     print '[INFO] checking'
-    utils.check('z',1e-12,res_z,fz)
+    ret = utils.check('z',1e-12,res_z,fz)
     print '[INFO] Done: check'
+    return ret
 
 def main_1(ver='Simulation'):
     try:
@@ -73,14 +75,19 @@ def main_1(ver='Simulation'):
     except Exception as e:
         pass
     utils.gen_slic(ver)
-def main_2():
-    utils.gen_conv_data()
-def main_3():
-    test()
-def main_0(ver='Simulation'):
-    main_1(ver)
+def main_2(filename=None):
+    if filename is None:
+        fns = TEST_DATA_SET
+    else:
+        fns = [filename]
+    fns.sort()
+    for f in fns:
+        if not test(f):
+            return False
+    return True
+def main_0():
+    main_1()
     main_2()
-    main_3()
 
 if __name__=='__main__':
     main_0()

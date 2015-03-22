@@ -31,7 +31,7 @@ public class CNN_BP_Conv_V0Manager extends CustomManager {
 		DFELink cpu_to_lmem_at_cpu = addStreamFromCPU("cpu_to_lmem_at_cpu");
 		DFELink lmem_to_cpu_at_lmem = addStreamFromOnCardMemory("lmem_to_cpu_at_lmem", MemoryAccessPattern.LINEAR_1D);
 		DFELink lmem_to_cpu_at_cpu = addStreamToCPU("lmem_to_cpu_at_cpu");
-		DFELink data_link_z2_grad = addStreamFromOnCardMemory("z2_grad", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_z_grad = addStreamFromOnCardMemory("z_grad", MemoryAccessPattern.LINEAR_1D);
 		DFELink data_link_x = addStreamFromOnCardMemory("x", MemoryAccessPattern.LINEAR_1D);
 		DFELink data_link_x_grad_old = addStreamFromOnCardMemory("x_grad_old", MemoryAccessPattern.LINEAR_1D);
 		DFELink data_link_w = addStreamFromCPU("w");
@@ -41,7 +41,7 @@ public class CNN_BP_Conv_V0Manager extends CustomManager {
 		cpu_to_lmem_at_lmem <== cpu_to_lmem_at_cpu;
 		lmem_to_cpu_at_cpu <== lmem_to_cpu_at_lmem;
 
-		block.getInput("z2_grad") <== data_link_z2_grad;
+		block.getInput("z_grad") <== data_link_z_grad;
 		block.getInput("x") <== data_link_x;
 		block.getInput("x_grad_old") <== data_link_x_grad_old;
 		block.getInput("w") <== data_link_w;
@@ -84,25 +84,25 @@ public class CNN_BP_Conv_V0Manager extends CustomManager {
 	private static EngineInterface modeDefault() {
 		EngineInterface engine_interface = new EngineInterface();
 
-		InterfaceParam ticks = engine_interface.addParam("ticks", CPUTypes.INT);
 		InterfaceParam no = engine_interface.addParam("no", CPUTypes.INT);
-		InterfaceParam para_size = no;
-		//InterfaceParam ni = engine_interface.addParam("ni", CPUTypes.INT);
-		InterfaceParam z2_grad_offset = engine_interface.addParam("z2_grad_offset", CPUTypes.INT);
-		InterfaceParam z2_grad_size = engine_interface.addParam("z2_grad_size", CPUTypes.INT);
+		InterfaceParam z_grad_offset = engine_interface.addParam("z_grad_offset", CPUTypes.INT);
 		InterfaceParam x_offset = engine_interface.addParam("x_offset", CPUTypes.INT);
-		InterfaceParam x_size = engine_interface.addParam("x_size", CPUTypes.INT);
 		InterfaceParam x_grad_old_offset = engine_interface.addParam("x_grad_old_offset", CPUTypes.INT);
-		InterfaceParam x_grad_old_size = engine_interface.addParam("x_grad_old_size", CPUTypes.INT);
-		InterfaceParam w_size = engine_interface.addParam("w_size", CPUTypes.INT);
 		InterfaceParam x_grad_offset = engine_interface.addParam("x_grad_offset", CPUTypes.INT);
-		InterfaceParam x_grad_size = engine_interface.addParam("x_grad_size", CPUTypes.INT);
-		InterfaceParam w_grad_size = engine_interface.addParam("w_grad_size", CPUTypes.INT);
+
 		InterfaceParam zero = engine_interface.addConstant(0);
+		InterfaceParam ticks = no*(iRowSize*iColSize*iBatchSize);
+		InterfaceParam para_size = no;
+		InterfaceParam x_size = engine_interface.addConstant(iRowSize*iColSize*iBatchSize*type.sizeInBytes());
+		InterfaceParam w_size = no*(iK*iK*type.sizeInBytes());
+		InterfaceParam z_grad_size = no*((iRowSize-iK+1)*(iColSize-iK+1)*iBatchSize*type.sizeInBytes());
+		InterfaceParam x_grad_old_size = x_size;
+		InterfaceParam x_grad_size = x_size;
+		InterfaceParam w_grad_size = no*(iK*iK*iBatchSize*type.sizeInBytes());
 
 		engine_interface.setTicks(s_kernelName, ticks);
 		engine_interface.setScalar(s_kernelName, "para_size", para_size);
-		engine_interface.setLMemLinear("z2_grad", z2_grad_offset, z2_grad_size);
+		engine_interface.setLMemLinear("z_grad", z_grad_offset, z_grad_size);
 		engine_interface.setLMemLinearWrapped("x", x_offset, x_size, x_size*no, zero);
 		engine_interface.setLMemLinearWrapped("x_grad_old", x_grad_old_offset, x_grad_old_size, x_grad_old_size*no, zero);
 		engine_interface.setStream("w", type, w_size);

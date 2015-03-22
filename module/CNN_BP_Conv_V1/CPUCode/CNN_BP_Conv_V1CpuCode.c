@@ -33,7 +33,7 @@ int main(void)
 	real* w = (real*)malloc(w_size);
 	real* w_grad = (real*)malloc(w_grad_size);
 	
-	max_file_t *maxfile = CNN_BP_Conv_V0_init();
+	max_file_t *maxfile = CNN_BP_Conv_V1_init();
 	max_engine_t *engine = max_load(maxfile, "*");
 
 	printf("Writing to LMem.\n");

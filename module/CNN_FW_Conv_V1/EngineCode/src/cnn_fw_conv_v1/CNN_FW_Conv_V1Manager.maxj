@@ -1,9 +1,9 @@
 package cnn_fw_conv_v1;
 
 import com.maxeler.maxcompiler.v2.managers.BuildConfig;
-import com.maxeler.maxcompiler.v2.managers.BuildConfig.Effort;
 import com.maxeler.maxcompiler.v2.managers.custom.CustomManager;
 import com.maxeler.maxcompiler.v2.managers.custom.DFELink;
+import com.maxeler.maxcompiler.v2.managers.custom.ManagerClock;
 import com.maxeler.maxcompiler.v2.managers.custom.blocks.KernelBlock;
 import com.maxeler.maxcompiler.v2.managers.custom.stdlib.MemoryControlGroup.MemoryAccessPattern;
 import com.maxeler.maxcompiler.v2.managers.engine_interfaces.CPUTypes;
@@ -21,7 +21,7 @@ public class CNN_FW_Conv_V1Manager extends CustomManager {
 	private static final int iRowSize = 12;
 	private static final int iColSize = 12;
 	private static final int iBatchSize = 384;
-	private static final int iVecSize = 6;
+	private static final int iVecSize = 4;
 
 	public CNN_FW_Conv_V1Manager(CNN_FW_Conv_V1EngineParameters engineParameters) {
 		super(engineParameters);
@@ -50,6 +50,8 @@ public class CNN_FW_Conv_V1Manager extends CustomManager {
 		createSLiCinterface(modeWrite("writeLMem"));
 		createSLiCinterface(modeDefault());
 
+		ManagerClock tmp = this.generateStreamClock("tmp_clock", 50);
+		block.setClock(tmp);
 		configBuild(engineParameters);
 	}
 
@@ -108,9 +110,9 @@ public class CNN_FW_Conv_V1Manager extends CustomManager {
 		BuildConfig buildConfig = getBuildConfig();
 		buildConfig.setMPPRCostTableSearchRange(params.getMPPRStartCT(), params.getMPPREndCT());
 		//buildConfig.setMPPRParallelism(params.getMPPRThreads());
-		buildConfig.setMPPRParallelism(4);
-		buildConfig.setBuildEffort(Effort.LOW);
 		buildConfig.setMPPRRetryNearMissesThreshold(params.getMPPRRetryThreshold());
+
+		buildConfig.setMPPRParallelism(4);
 	}
 
 	public static void main(String[] args) {
