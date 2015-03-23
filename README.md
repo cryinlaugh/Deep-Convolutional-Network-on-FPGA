@@ -8,7 +8,7 @@ a simplified version of LeNet5
 |CNN_BP_Conv_V0   |N/A|y|y|y|y|y|
 |CNN_BP_Conv_V1   |2Failed|y|y|y| | |
 |CNN_FW_MaxPool_V0|N/A|y|y|y|y|y|
-|CNN_FW_MaxPool_V1|12,SUC|y|y|y| | |
+|CNN_FW_MaxPool_V1|12,ing|y|y|y| | |
 |CNN_BP_MaxPool_V0|N/A|y|y|y|y|y|
 |CNN_BP_MaxPool_V1|12,ing|y|y|y| | |
 |CNN_FW_Softmax_V0|   | | | | | |
