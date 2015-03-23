@@ -85,8 +85,8 @@ def main_2(filename=None):
         if not test(f):
             return False
     return True
-def main_0():
-    main_1()
+def main_0(ver='Simulation'):
+    main_1(ver)
     main_2()
 
 if __name__=='__main__':

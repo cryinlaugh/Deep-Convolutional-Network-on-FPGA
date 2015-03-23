@@ -2,6 +2,7 @@ package cnn_fw_maxpool_v0;
 
 import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
 import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.KernelMath;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
@@ -76,9 +77,15 @@ class CNN_FW_MaxPool_V0Kernel extends Kernel {
 			sel = sels[i].cat(sel);
 		}
 
+		//DFEVar a = (KernelMath.exp(z, type)-KernelMath.exp(-z, type))/(KernelMath.exp(z, type)+KernelMath.exp(-z, type));
+		DFEVar epz = KernelMath.exp(z, type);
+		DFEVar enz = KernelMath.exp(-z, type);
+		DFEVar a = (epz-enz)/(epz+enz);
+
 		DFEVar ctr_out = subRow.eq(iK-1) & subCol.eq(iK-1);
-		io.output("z", z, type, ctr_out);
 		io.output("sel", sel, dfeRawBits(iK*iK), ctr_out);
+		io.output("z", z, type, ctr_out);
+		io.output("a", a, type, ctr_out);
 	}
 
 }

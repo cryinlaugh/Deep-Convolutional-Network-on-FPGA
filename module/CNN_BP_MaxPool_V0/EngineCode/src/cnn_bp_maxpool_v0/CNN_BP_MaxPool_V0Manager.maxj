@@ -15,27 +15,34 @@ public class CNN_BP_MaxPool_V0Manager extends CustomManager {
 	private static final String s_kernelName = "CNN_BP_MaxPool_V0Kernel";
 	//private static final CPUTypes type = CPUTypes.FLOAT;
 	private static final CPUTypes type = CPUTypes.DOUBLE;
+	private static final int iK = 2;
+	private static final int iParaBitWidth = 16;
+	private static final int iRowSize = 8;
+	private static final int iColSize = 8;
+	private static final int iBatchSize = 384;
 
 	public CNN_BP_MaxPool_V0Manager(CNN_BP_MaxPool_V0EngineParameters engineParameters) {
 		super(engineParameters);
 
-		KernelBlock block = addKernel(new CNN_BP_MaxPool_V0Kernel(
-				makeKernelParameters(s_kernelName),2,16,8,8,384));
+		KernelBlock block = addKernel(new CNN_BP_MaxPool_V0Kernel(makeKernelParameters(s_kernelName),
+			iK,iParaBitWidth,iRowSize,iColSize,iBatchSize));
 
 		DFELink cpu_to_lmem_at_lmem = addStreamToOnCardMemory("cpu_to_lmem_at_lmem", MemoryAccessPattern.LINEAR_1D);
 		DFELink cpu_to_lmem_at_cpu = addStreamFromCPU("cpu_to_lmem_at_cpu");
 		DFELink lmem_to_cpu_at_lmem = addStreamFromOnCardMemory("lmem_to_cpu_at_lmem", MemoryAccessPattern.LINEAR_1D);
 		DFELink lmem_to_cpu_at_cpu = addStreamToCPU("lmem_to_cpu_at_cpu");
+		DFELink data_link_a_grad = addStreamFromOnCardMemory("a_grad", MemoryAccessPattern.LINEAR_1D);
 		DFELink data_link_z = addStreamFromOnCardMemory("z", MemoryAccessPattern.LINEAR_1D);
 		DFELink data_link_sel = addStreamFromOnCardMemory("sel", MemoryAccessPattern.LINEAR_1D);
-		DFELink data_link_z2 = addStreamToOnCardMemory("z2", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_z2_grad = addStreamToOnCardMemory("z2_grad", MemoryAccessPattern.LINEAR_1D);
 
 		cpu_to_lmem_at_lmem <== cpu_to_lmem_at_cpu;
 		lmem_to_cpu_at_cpu <== lmem_to_cpu_at_lmem;
 
+		block.getInput("a_grad") <== data_link_a_grad;
 		block.getInput("z") <== data_link_z;
 		block.getInput("sel") <== data_link_sel;
-		data_link_z2 <== block.getOutput("z2");
+		data_link_z2_grad <== block.getOutput("z2_grad");
 
 		createSLiCinterface(modeRead("readLMem"));
 		createSLiCinterface(modeReadBytes("readLMemBytes"));
@@ -101,22 +108,25 @@ public class CNN_BP_MaxPool_V0Manager extends CustomManager {
 	private static EngineInterface modeDefault() {
 		EngineInterface engine_interface = new EngineInterface();
 
-		InterfaceParam ticks = engine_interface.addParam("ticks", CPUTypes.INT);
 		InterfaceParam no = engine_interface.addParam("no", CPUTypes.INT);
-		InterfaceParam para_size = no;
+		InterfaceParam a_grad_offset = engine_interface.addParam("a_grad_offset", CPUTypes.INT);
 		InterfaceParam z_offset = engine_interface.addParam("z_offset", CPUTypes.INT);
-		InterfaceParam z_size = engine_interface.addParam("z_size", CPUTypes.INT);
 		InterfaceParam sel_offset = engine_interface.addParam("sel_offset", CPUTypes.INT);
-		InterfaceParam sel_size = engine_interface.addParam("sel_size", CPUTypes.INT);
-		InterfaceParam z2_offset = engine_interface.addParam("z2_offset", CPUTypes.INT);
-		InterfaceParam z2_size = engine_interface.addParam("z2_size", CPUTypes.INT);
-		//InterfaceParam zero = engine_interface.addConstant(0);
+		InterfaceParam z2_grad_offset = engine_interface.addParam("z2_grad_offset", CPUTypes.INT);
+
+		InterfaceParam ticks = no*(iRowSize*iColSize*iBatchSize);
+		InterfaceParam para_size = no;
+		InterfaceParam a_grad_size = no*(iRowSize/iK*iColSize/iK*iBatchSize*type.sizeInBytes());
+		InterfaceParam z_size = no*(iRowSize/iK*iColSize/iK*iBatchSize*type.sizeInBytes());
+		InterfaceParam sel_size = no*(iRowSize*iColSize*iBatchSize/8);
+		InterfaceParam z2_grad_size = no*(iRowSize*iColSize*iBatchSize*type.sizeInBytes());
 
 		engine_interface.setTicks(s_kernelName, ticks);
 		engine_interface.setScalar(s_kernelName, "para_size", para_size);
+		engine_interface.setLMemLinear("a_grad", a_grad_offset, a_grad_size);
 		engine_interface.setLMemLinear("z", z_offset, z_size);
 		engine_interface.setLMemLinear("sel", sel_offset, sel_size);
-		engine_interface.setLMemLinear("z2", z2_offset, z2_size);
+		engine_interface.setLMemLinear("z2_grad", z2_grad_offset, z2_grad_size);
 
 		engine_interface.ignoreAll(Direction.IN_OUT);
 		return engine_interface;

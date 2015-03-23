@@ -20,7 +20,7 @@ public class CNN_FW_MaxPool_V1Manager extends CustomManager {
 	private static final int iRowSize = 8;
 	private static final int iColSize = 8;
 	private static final int iBatchSize = 384;
-	private static final int iVecSize = 6;
+	private static final int iVecSize = 12;
 
 	public CNN_FW_MaxPool_V1Manager(CNN_FW_MaxPool_V1EngineParameters engineParameters) {
 		super(engineParameters);
@@ -33,15 +33,17 @@ public class CNN_FW_MaxPool_V1Manager extends CustomManager {
 		DFELink lmem_to_cpu_at_lmem = addStreamFromOnCardMemory("lmem_to_cpu_at_lmem", MemoryAccessPattern.LINEAR_1D);
 		DFELink lmem_to_cpu_at_cpu = addStreamToCPU("lmem_to_cpu_at_cpu");
 		DFELink data_link_z2 = addStreamFromOnCardMemory("z2", MemoryAccessPattern.LINEAR_1D);
-		DFELink data_link_z = addStreamToOnCardMemory("z", MemoryAccessPattern.LINEAR_1D);
 		DFELink data_link_sel = addStreamToOnCardMemory("sel", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_z = addStreamToOnCardMemory("z", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_a = addStreamToOnCardMemory("a", MemoryAccessPattern.LINEAR_1D);
 
 		cpu_to_lmem_at_lmem <== cpu_to_lmem_at_cpu;
 		lmem_to_cpu_at_cpu <== lmem_to_cpu_at_lmem;
 
 		block.getInput("z2") <== data_link_z2;
-		data_link_z <== block.getOutput("z");
 		data_link_sel <== block.getOutput("sel");
+		data_link_z <== block.getOutput("z");
+		data_link_a <== block.getOutput("a");
 
 		createSLiCinterface(modeRead("readLMem"));
 		createSLiCinterface(modeReadBytes("readLMemBytes"));
@@ -109,20 +111,23 @@ public class CNN_FW_MaxPool_V1Manager extends CustomManager {
 
 		InterfaceParam no = engine_interface.addParam("no", CPUTypes.INT);
 		InterfaceParam z2_offset = engine_interface.addParam("z2_offset", CPUTypes.INT);
-		InterfaceParam z_offset = engine_interface.addParam("z_offset", CPUTypes.INT);
 		InterfaceParam sel_offset = engine_interface.addParam("sel_offset", CPUTypes.INT);
+		InterfaceParam z_offset = engine_interface.addParam("z_offset", CPUTypes.INT);
+		InterfaceParam a_offset = engine_interface.addParam("a_offset", CPUTypes.INT);
 
 		InterfaceParam ticks = no*(iRowSize*iColSize*iBatchSize/iVecSize);
 		InterfaceParam para_size = no;
 		InterfaceParam z2_size = no*(iRowSize*iColSize*iBatchSize*type.sizeInBytes());
-		InterfaceParam z_size = no*(iRowSize/iK*iColSize/iK*iBatchSize*type.sizeInBytes());
 		InterfaceParam sel_size = no*(iRowSize*iColSize*iBatchSize/8);
+		InterfaceParam z_size = no*(iRowSize/iK*iColSize/iK*iBatchSize*type.sizeInBytes());
+		InterfaceParam a_size = no*(iRowSize/iK*iColSize/iK*iBatchSize*type.sizeInBytes());
 
 		engine_interface.setTicks(s_kernelName, ticks);
 		engine_interface.setScalar(s_kernelName, "para_size", para_size);
 		engine_interface.setLMemLinear("z2", z2_offset, z2_size);
-		engine_interface.setLMemLinear("z", z_offset, z_size);
 		engine_interface.setLMemLinear("sel", sel_offset, sel_size);
+		engine_interface.setLMemLinear("z", z_offset, z_size);
+		engine_interface.setLMemLinear("a", a_offset, a_size);
 
 		engine_interface.ignoreAll(Direction.IN_OUT);
 		return engine_interface;

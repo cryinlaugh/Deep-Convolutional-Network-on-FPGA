@@ -16,23 +16,33 @@ int main(void)
 	const int col = 8;
 	const int batch_size = 384;
 
-	int ticks = no*row*col*batch_size;
-	int z2_offset = 0;
-	int z2_size = no*row*col*batch_size*sizeof(real);
-	int z_offset = z2_size;
+	int a_grad_offset = 0;
+	int a_grad_size = no*row*col/k/k*batch_size*sizeof(real);
+	int z_offset = a_grad_size;
 	int z_size = no*row*col/k/k*batch_size*sizeof(real);
 	int sel_offset = z_offset+z_size;
 	int sel_size = no*row*col*batch_size/8;
+	int z2_grad_offset = sel_offset+sel_size;
+	int z2_grad_size = no*row*col*batch_size*sizeof(real);
 
-	real* z2 = (real*)malloc(z2_size);
+	real* a_grad = (real*)malloc(a_grad_size);
 	real* z = (real*)malloc(z_size);
 	uchar* sel = (uchar*)malloc(sel_size);
+	real* z2_grad = (real*)malloc(z2_grad_size);
 	
 	max_file_t *maxfile = CNN_BP_MaxPool_V0_init();
 	max_engine_t *engine = max_load(maxfile, "*");
+	max_actions_t* act;
 
 	printf("Writing to LMem.\n");
-	max_actions_t* act = max_actions_init(maxfile, "writeLMem");
+	act = max_actions_init(maxfile, "writeLMem");
+	max_set_param_uint64t(act, "offset", a_grad_offset);
+	max_set_param_uint64t(act, "size", a_grad_size);
+	max_queue_input(act, "cpu_to_lmem_at_cpu", a_grad, a_grad_size);
+	max_run(engine, act);
+
+	printf("Writing to LMem.\n");
+	act = max_actions_init(maxfile, "writeLMem");
 	max_set_param_uint64t(act, "offset", z_offset);
 	max_set_param_uint64t(act, "size", z_size);
 	max_queue_input(act, "cpu_to_lmem_at_cpu", z, z_size);
@@ -47,29 +57,27 @@ int main(void)
 
 	printf("Running on DFE.\n");
 	act = max_actions_init(maxfile, "default");
-	max_set_param_uint64t(act, "ticks", ticks);
 	max_set_param_uint64t(act, "no", no);
+	max_set_param_uint64t(act, "a_grad_offset", a_grad_offset);
 	max_set_param_uint64t(act, "z_offset", z_offset);
-	max_set_param_uint64t(act, "z_size", z_size);
 	max_set_param_uint64t(act, "sel_offset", sel_offset);
-	max_set_param_uint64t(act, "sel_size", sel_size);
-	max_set_param_uint64t(act, "z2_offset", z2_offset);
-	max_set_param_uint64t(act, "z2_size", z2_size);
+	max_set_param_uint64t(act, "z2_grad_offset", z2_grad_offset);
 	max_run(engine, act);
 
 	printf("Reading from LMem.\n");
 	act = max_actions_init(maxfile, "readLMem");
-	max_set_param_uint64t(act, "offset", z2_offset);
-	max_set_param_uint64t(act, "size", z2_size);
-	max_queue_output(act, "lmem_to_cpu_at_cpu", z2, z2_size);
+	max_set_param_uint64t(act, "offset", z2_grad_offset);
+	max_set_param_uint64t(act, "size", z2_grad_size);
+	max_queue_output(act, "lmem_to_cpu_at_cpu", z2_grad, z2_grad_size);
 	max_run(engine, act);
 
 	max_unload(engine);
 	printf("Done.\n");
 
-	free(z2);
+	free(a_grad);
 	free(z);
 	free(sel);
+	free(z2_grad);
 
 	return 0;
 }

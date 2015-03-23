@@ -5,7 +5,7 @@ import time
 import cPickle
 import utils
 utils.PROJ_NAME = 'CNN_FW_MaxPool_V1'
-TEST_DATA_PATH=os.getenv('CNN_TEST_DATA_PATH')+'/max_pool_small'
+TEST_DATA_PATH = os.getenv('CNN_TEST_DATA_PATH')+'/max_pool_small'
 TEST_DATA_SET = map(lambda f:os.path.join(TEST_DATA_PATH,f),os.listdir(TEST_DATA_PATH))
 type_size = 8
 
@@ -16,16 +16,19 @@ def test(filename='data.bin'):
     with open(filename) as inf:
         para = cPickle.load(inf)
         fz2 = cPickle.load(inf)
-        fz = cPickle.load(inf)
         fselw = cPickle.load(inf)
+        fz = cPickle.load(inf)
+        fa = cPickle.load(inf)
     no,row,col,k,batch_size = para
     
     z2_offset = 0
     z2_size = no*row*col*batch_size*type_size
-    z_offset = z2_size
-    z_size = no*(row/k)*(col/k)*batch_size*type_size
-    sel_offset = z_offset+z_size
+    sel_offset = z2_offset+z2_size
     sel_size = no*row*col*batch_size/8
+    z_offset = sel_offset+sel_size
+    z_size = no*(row/k)*(col/k)*batch_size*type_size
+    a_offset = z_offset+z_size
+    a_size = no*(row/k)*(col/k)*batch_size*type_size
     print '[INFO] Done: load data'
     print '[INFO] time used = %f' %(time.time()-t0)
 
@@ -40,6 +43,7 @@ def test(filename='data.bin'):
 
     print '[INFO] running Conv'
     cnn.CNN_FW_MaxPool_V1(
+        param_a_offset = a_offset,
         param_no = no,
         param_sel_offset = sel_offset,
         param_z2_offset = z2_offset,
@@ -56,6 +60,14 @@ def test(filename='data.bin'):
     print '[INFO] Done: readLMem'
     print '[INFO] time used = %f' %(time.time()-t0)
 
+    print '[INFO] running readLMem'
+    res_a = cnn.CNN_FW_MaxPool_V1_readLMem(
+        param_offset = a_offset,
+        param_size = a_size
+    )
+    print '[INFO] Done: readLMem'
+    print '[INFO] time used = %f' %(time.time()-t0)
+
     print '[INFO] running readLMemBytes'
     res_selw = cnn.CNN_FW_MaxPool_V1_readLMemBytes(
         param_offset = sel_offset,
@@ -66,10 +78,11 @@ def test(filename='data.bin'):
     print '[INFO] time used = %f' %(time.time()-t0)
 
     print '[INFO] checking'
+    ret0 = utils.check('selw',0,res_selw,fselw)
     ret1 = utils.check('z',1e-12,res_z,fz)
-    ret2 = utils.check('selw',0,res_selw,fselw)
+    ret2 = utils.check('a',1e-12,res_a,fa)
     print '[INFO] Done: check'
-    return ret1 and ret2
+    return ret0 and ret1 and ret2
 
 def main_1(ver='Simulation'):
     try:
@@ -87,8 +100,8 @@ def main_2(filename=None):
         if not test(f):
             return False
     return True
-def main_0():
-    main_1()
+def main_0(ver='Simulation'):
+    main_1(ver)
     main_2()
 
 if __name__=='__main__':
