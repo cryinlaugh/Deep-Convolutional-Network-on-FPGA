@@ -20,7 +20,7 @@ public class CNN_FW_MaxPool_V1Manager extends CustomManager {
 	private static final int iRowSize = 8;
 	private static final int iColSize = 8;
 	private static final int iBatchSize = 384;
-	private static final int iVecSize = 12;
+	private static final int iVecSize = 8;
 
 	public CNN_FW_MaxPool_V1Manager(CNN_FW_MaxPool_V1EngineParameters engineParameters) {
 		super(engineParameters);
