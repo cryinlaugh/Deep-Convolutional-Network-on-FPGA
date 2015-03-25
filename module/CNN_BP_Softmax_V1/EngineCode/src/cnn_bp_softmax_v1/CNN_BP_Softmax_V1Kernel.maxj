@@ -1,0 +1,78 @@
+package cnn_bp_softmax_v1;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
+import com.maxeler.maxcompiler.v2.utils.MathUtils;
+
+class CNN_BP_Softmax_V1Kernel extends Kernel {
+
+	//private static final DFEType type = dfeFloat(8, 24);
+	private static final DFEType type = dfeFloat(11, 53);
+	private static final DFEType cateType = dfeInt(32);
+
+	protected CNN_BP_Softmax_V1Kernel(KernelParameters parameters
+		,int iParaBitWidth,int iOutSize,int iBatchSize,int iVecSize) {
+		super(parameters);
+
+		DFEVectorType<DFEVar> vecType = new DFEVectorType<DFEVar>(type,iVecSize);
+		DFEVectorType<DFEVar> cateVecType = new DFEVectorType<DFEVar>(cateType,iVecSize);
+		DFEVar vParaSize = io.scalarInput("para_size",dfeUInt(iParaBitWidth));
+		int iBatchSubSize = (iBatchSize+iVecSize-1)/iVecSize;
+		int iBatchBitWidth = MathUtils.bitsToAddress(iBatchSubSize);
+		int iOutBitWidth = MathUtils.bitsToAddress(iOutSize);
+
+		Count.Params paraBatch = control.count.makeParams(iBatchBitWidth)
+			.withMax(iBatchSubSize);
+		Counter counterBatch = control.count.makeCounter(paraBatch);
+		Count.Params paraOut = control.count.makeParams(iOutBitWidth)
+			.withEnable(counterBatch.getWrap())
+			.withMax(iOutSize);
+		Counter counterOut = control.count.makeCounter(paraOut);
+		Count.Params paraPara = control.count.makeParams(iParaBitWidth)
+			.withEnable(counterOut.getWrap())
+			.withMax(vParaSize);
+		Counter counterPara = control.count.makeCounter(paraPara);
+
+		DFEVar batch = counterBatch.getCount();
+		DFEVar outIdx = counterOut.getCount();
+		DFEVar para = counterPara.getCount();
+
+		DFEVector<DFEVar> x_in = io.input("x", vecType, outIdx.eq(0));
+		DFEVector<DFEVar> x = vecType.newInstance(this);
+		DFEVector<DFEVar> x_old = stream.offset(x, -iBatchSubSize);
+		x <== (outIdx.eq(0))?x_in:x_old;
+		DFEVar w = io.input("w", type, batch.eq(0));
+		DFEVector<DFEVar> softmax_in = io.input("softmax", vecType, para.eq(0));
+		DFEVector<DFEVar> softmax = vecType.newInstance(this);
+		DFEVector<DFEVar> softmax_old = stream.offset(softmax, -iOutSize*iBatchSubSize);
+		softmax <== (para.eq(0))?softmax_in:softmax_old;
+		DFEVector<DFEVar> std_in = io.input("std", cateVecType, para.eq(0)&outIdx.eq(0));
+		DFEVector<DFEVar> std = cateVecType.newInstance(this);
+		DFEVector<DFEVar> std_old = stream.offset(std, -iBatchSubSize);
+		std <== (para.eq(0)&outIdx.eq(0))?std_in:std_old;
+
+		DFEVar[] smmd = new DFEVar[iVecSize];
+		DFEVector<DFEVar> w_grad = vecType.newInstance(this);
+		DFEVector<DFEVar> b_grad = vecType.newInstance(this);
+		//DFEVector<DFEVar> b_grad_old = outIdx.eq(0)?constant.vect(iVecSize, type, 0.0):stream.offset(b_grad, -iOutSize*iBatchSubSize);
+		DFEVector<DFEVar> x_grad = vecType.newInstance(this);
+		DFEVector<DFEVar> x_grad_old = outIdx.eq(0)?constant.vect(iVecSize, type, 0.0):stream.offset(x_grad, -iBatchSubSize);
+		for (int k=0;k<iVecSize;++k){
+			smmd[k] = softmax[k]-(std[k].cast(dfeUInt(4)).eq(outIdx)?constant.var(type,1.0):constant.var(type,0.0));
+			w_grad[k] <== smmd[k]*x[k];
+			b_grad[k] <== smmd[k];
+			x_grad[k] <== x_grad_old[k]+w*smmd[k]/constant.var(type,iBatchSize);
+		}
+
+		io.output("w_grad", w_grad, vecType);
+		io.output("b_grad", b_grad, vecType, para.eq(0));
+		io.output("x_grad", x_grad, vecType, outIdx.eq(iOutSize-1));
+	}
+
+}

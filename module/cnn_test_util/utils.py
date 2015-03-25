@@ -144,7 +144,7 @@ def gen_softmax_data(filename='data.bin',ni=500,no=10,batch_size=384):
     b_grad = [[sm[i2][i3]-delta[i2][i3] for i3 in xrange(batch_size)] for i2 in xrange(no)]
     w_grad = [[[x[i1][i3]*(sm[i2][i3]-delta[i2][i3]) for i3 in xrange(batch_size)] for i2 in xrange(no)] for i1 in xrange(ni)]
     z_grad = [[(sm[i2][i3]-delta[i2][i3])/batch_size for i3 in xrange(batch_size)] for i2 in xrange(no)]
-    x_grad = [[sum([z_grad[i2][i3]*x[i1][i3] for i2 in xrange(no)]) for i3 in xrange(batch_size)] for i1 in xrange(ni)]
+    x_grad = [[sum([z_grad[i2][i3]*w[i1][i2] for i2 in xrange(no)]) for i3 in xrange(batch_size)] for i1 in xrange(ni)]
 
     fb = b
     fx = [x[i1][i3] for i1 in xrange(ni) for i3 in xrange(batch_size)]
@@ -200,7 +200,7 @@ def gen_all_data():
     #for d in dns:
     #    os.mkdir(d)
     #    print "[INFO] mkdir %s" %(d)
-    
+
     gen_conv_data(filename=dns[0]+'data0.bin',ni=1,no=2,row=28,col=28,k=5,batch_size=384)
     gen_conv_data(filename=dns[0]+'data1.bin',ni=1,no=4,row=28,col=28,k=5,batch_size=384)
     gen_conv_data(filename=dns[0]+'data2.bin',ni=2,no=2,row=28,col=28,k=5,batch_size=384)
@@ -236,7 +236,7 @@ def gen_all_data():
     gen_max_pool_data(filename=dns[3]+'data5.bin',no=30,row=8,col=8,k=2,batch_size=384)
     gen_max_pool_data(filename=dns[3]+'data6.bin',no=40,row=8,col=8,k=2,batch_size=384)
     gen_max_pool_data(filename=dns[3]+'data7.bin',no=50,row=8,col=8,k=2,batch_size=384)
-    
+
     gen_softmax_data(filename=dns[4]+'data0.bin',ni=1,no=10,batch_size=384)
     gen_softmax_data(filename=dns[4]+'data1.bin',ni=2,no=10,batch_size=384)
     gen_softmax_data(filename=dns[4]+'data2.bin',ni=5,no=10,batch_size=384)

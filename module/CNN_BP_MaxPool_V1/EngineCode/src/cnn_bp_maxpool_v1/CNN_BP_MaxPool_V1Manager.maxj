@@ -1,0 +1,150 @@
+package cnn_bp_maxpool_v1;
+
+import com.maxeler.maxcompiler.v2.managers.BuildConfig;
+import com.maxeler.maxcompiler.v2.managers.custom.CustomManager;
+import com.maxeler.maxcompiler.v2.managers.custom.DFELink;
+import com.maxeler.maxcompiler.v2.managers.custom.blocks.KernelBlock;
+import com.maxeler.maxcompiler.v2.managers.custom.stdlib.MemoryControlGroup.MemoryAccessPattern;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.CPUTypes;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.EngineInterface;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.EngineInterface.Direction;
+import com.maxeler.maxcompiler.v2.managers.engine_interfaces.InterfaceParam;
+
+public class CNN_BP_MaxPool_V1Manager extends CustomManager {
+
+	private static final String s_kernelName = "CNN_BP_MaxPool_V1Kernel";
+	//private static final CPUTypes type = CPUTypes.FLOAT;
+	private static final CPUTypes type = CPUTypes.DOUBLE;
+	private static final int iK = 2;
+	private static final int iParaBitWidth = 16;
+	private static final int iRowSize = 8;
+	private static final int iColSize = 8;
+	private static final int iBatchSize = 384;
+	private static final int iVecSize = 12;
+
+	public CNN_BP_MaxPool_V1Manager(CNN_BP_MaxPool_V1EngineParameters engineParameters) {
+		super(engineParameters);
+
+		KernelBlock block = addKernel(new CNN_BP_MaxPool_V1Kernel(makeKernelParameters(s_kernelName),
+			iK,iParaBitWidth,iRowSize,iColSize,iBatchSize,iVecSize));
+
+		DFELink cpu_to_lmem_at_lmem = addStreamToOnCardMemory("cpu_to_lmem_at_lmem", MemoryAccessPattern.LINEAR_1D);
+		DFELink cpu_to_lmem_at_cpu = addStreamFromCPU("cpu_to_lmem_at_cpu");
+		DFELink lmem_to_cpu_at_lmem = addStreamFromOnCardMemory("lmem_to_cpu_at_lmem", MemoryAccessPattern.LINEAR_1D);
+		DFELink lmem_to_cpu_at_cpu = addStreamToCPU("lmem_to_cpu_at_cpu");
+		DFELink data_link_a_grad = addStreamFromOnCardMemory("a_grad", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_z = addStreamFromOnCardMemory("z", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_sel = addStreamFromOnCardMemory("sel", MemoryAccessPattern.LINEAR_1D);
+		DFELink data_link_z2_grad = addStreamToOnCardMemory("z2_grad", MemoryAccessPattern.LINEAR_1D);
+
+		cpu_to_lmem_at_lmem <== cpu_to_lmem_at_cpu;
+		lmem_to_cpu_at_cpu <== lmem_to_cpu_at_lmem;
+
+		block.getInput("a_grad") <== data_link_a_grad;
+		block.getInput("z") <== data_link_z;
+		block.getInput("sel") <== data_link_sel;
+		data_link_z2_grad <== block.getOutput("z2_grad");
+
+		createSLiCinterface(modeRead("readLMem"));
+		createSLiCinterface(modeReadBytes("readLMemBytes"));
+		createSLiCinterface(modeWrite("writeLMem"));
+		createSLiCinterface(modeWriteBytes("writeLMemBytes"));
+		createSLiCinterface(modeDefault());
+
+		configBuild(engineParameters);
+	}
+
+	private static EngineInterface modeRead(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("lmem_to_cpu_at_cpu", type, size);
+		engine_interface.setLMemLinear("lmem_to_cpu_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeReadBytes(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("lmem_to_cpu_at_cpu", CPUTypes.UINT8, size);
+		engine_interface.setLMemLinear("lmem_to_cpu_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeWrite(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("cpu_to_lmem_at_cpu", type, size);
+		engine_interface.setLMemLinear("cpu_to_lmem_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeWriteBytes(String name) {
+		EngineInterface engine_interface = new EngineInterface(name);
+
+		InterfaceParam offset = engine_interface.addParam("offset", CPUTypes.INT);
+		InterfaceParam size = engine_interface.addParam("size", CPUTypes.INT);
+
+		engine_interface.setStream("cpu_to_lmem_at_cpu", CPUTypes.UINT8, size);
+		engine_interface.setLMemLinear("cpu_to_lmem_at_lmem", offset, size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private static EngineInterface modeDefault() {
+		EngineInterface engine_interface = new EngineInterface();
+
+		InterfaceParam no = engine_interface.addParam("no", CPUTypes.INT);
+		InterfaceParam a_grad_offset = engine_interface.addParam("a_grad_offset", CPUTypes.INT);
+		InterfaceParam z_offset = engine_interface.addParam("z_offset", CPUTypes.INT);
+		InterfaceParam sel_offset = engine_interface.addParam("sel_offset", CPUTypes.INT);
+		InterfaceParam z2_grad_offset = engine_interface.addParam("z2_grad_offset", CPUTypes.INT);
+
+		InterfaceParam ticks = no*(iRowSize*iColSize*iBatchSize/iVecSize);
+		InterfaceParam para_size = no;
+		InterfaceParam a_grad_size = no*(iRowSize/iK*iColSize/iK*iBatchSize*type.sizeInBytes());
+		InterfaceParam z_size = no*(iRowSize/iK*iColSize/iK*iBatchSize*type.sizeInBytes());
+		InterfaceParam sel_size = no*(iRowSize*iColSize*iBatchSize/8);
+		InterfaceParam z2_grad_size = no*(iRowSize*iColSize*iBatchSize*type.sizeInBytes());
+
+		engine_interface.setTicks(s_kernelName, ticks);
+		engine_interface.setScalar(s_kernelName, "para_size", para_size);
+		engine_interface.setLMemLinear("a_grad", a_grad_offset, a_grad_size);
+		engine_interface.setLMemLinear("z", z_offset, z_size);
+		engine_interface.setLMemLinear("sel", sel_offset, sel_size);
+		engine_interface.setLMemLinear("z2_grad", z2_grad_offset, z2_grad_size);
+
+		engine_interface.ignoreAll(Direction.IN_OUT);
+		return engine_interface;
+	}
+
+	private void configBuild(CNN_BP_MaxPool_V1EngineParameters params) {
+		BuildConfig buildConfig = getBuildConfig();
+		buildConfig.setMPPRCostTableSearchRange(params.getMPPRStartCT(), params.getMPPREndCT());
+		//buildConfig.setMPPRParallelism(params.getMPPRThreads());
+		buildConfig.setMPPRRetryNearMissesThreshold(params.getMPPRRetryThreshold());
+
+		buildConfig.setMPPRParallelism(4);
+	}
+
+
+	public static void main(String[] args) {
+		CNN_BP_MaxPool_V1Manager manager = new CNN_BP_MaxPool_V1Manager(new CNN_BP_MaxPool_V1EngineParameters(args));
+		manager.build();
+	}
+}
